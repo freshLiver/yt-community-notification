@@ -1,46 +1,96 @@
 // ==UserScript==
-// @name         Youtube-Community-Post-Nitification
+// @name         Youtube-Community-Post-Notification
 // @namespace    http://tampermonkey.net/
 // @version      0.1
 // @description  Youtube Community Posts
 // @author       freshLiver
 // @match        https://www.youtube.com
 // @icon         https://www.google.com/s2/favicons?domain=youtube.com
-// @grant        none
+// @grant        GM_notification
 // @require      https://code.jquery.com/jquery-latest.min.js
 // ==/UserScript==
 
 const yt_base_url = "https://www.youtube.com";
 
+
 function get_channel_community_posts(channel_id) {
 
-    // send http get request to target channel and get resp text
-    const resp = $.get(`${yt_base_url}/channel/${channel_id}/community`);
+    // send sync http get request and get resp text(data)
+    let community_posts = null;
+    $.ajax({
+        async: false,
+        type: 'GET',
+        url: `${yt_base_url}/channel/${channel_id}/community`,
+        success: function (data) {
 
-    if (resp.status == 200) {
+            // add resp text into a new element for parsing
+            const result_element = $(`<div>${data}</div>`);
 
-        // add resp text into a new element for parsing
-        const result_element = $(`<div>${resp.responseText}</div>`);
+            // get content script from result element and extract json data
+            const content = result_element.find("link[rel=canonical]").prev(),
+                data_begin = content.text().search("="),
+                data_end = content.text().lastIndexOf(";"),
+                channel_data = JSON.parse(content.text().slice(data_begin + 1, data_end));
 
-        // get content script from result element and extract json data
-        const content = result_element.find("link[rel=canonical]").prev(),
-            data_begin = content.text().search("="),
-            data_end = content.text().lastIndexOf(";"),
-            data = JSON.parse(content.text().slice(data_begin + 1, data_end));
-
-        // extract community data
-        let community = null;
-        for (const tab of data.contents.twoColumnBrowseResultsRenderer.tabs) {
-            if (tab.tabRenderer.title === '社群') {
-                community = tab.tabRenderer;
-                break;
+            // extract community data
+            let community = null;
+            for (const tab of channel_data.contents.twoColumnBrowseResultsRenderer.tabs) {
+                if (tab.tabRenderer.title === '社群') {
+                    community = tab.tabRenderer;
+                    break;
+                }
             }
-        }
 
-        // extract post list from community data and get latest post
-        return community.content.sectionListRenderer.contents[0].itemSectionRenderer.contents;
-    }
-    console.log(`${resp.status} : ${resp.text}`);
+            // extract post list from community data and get latest post
+            community_posts = community.content.sectionListRenderer.contents[0].itemSectionRenderer.contents;
+        }
+    });
+    return community_posts;
+}
+
+function notify(channel_id, postData) {
+
+    // get info from post data
+    const postInfo = postData.backstagePostThreadRenderer.post.backstagePostRenderer;
+    const postVideo = postInfo.backstageAttachment.videoRenderer;
+
+    // post info
+    const info = {
+        "channel": {
+            name: postInfo.authorText.runs[0].text,
+            thumbnail: `https:${postInfo.authorThumbnail.thumbnails.pop().url}`
+        },
+        "content": {
+            "text": postInfo?.contentText.runs.map((value) => value.text).join('\n'),
+            "videoInfo": {
+                title: postVideo?.title.runs[0].text || undefined,
+                id: postVideo?.videoId,
+                thumbnail: postVideo?.thumbnail.thumbnails.pop().url,
+                link: postVideo ? `https://youtu.be/${postVideo.videoId}` : undefined
+            }
+        },
+        "id": postInfo.postId,
+        "time": postInfo.publishedTimeText.runs[0].text,
+        "link": `${yt_base_url}/channel/${channel_id}/community?lb=${postInfo.postId}`,
+    };
+
+    // convert info to notification data
+    const notification = {
+        title: `${info.channel.name} - (${info.time}) - ${info.content.videoInfo.title || ""}`,
+        text: info.content.text,
+        image: info.content.videoInfo.thumbnail || info.channel.thumbnail,
+        highlight: true,
+        silent: true,
+        timeout: 5,
+        onclick: () => {
+            // if no video, open post page and focus to it
+            const newWin = window.open(info.content.videoInfo.link || info.link);
+            newWin.focus();
+        }
+    };
+
+    // send notification
+    GM_notification(notification);
 }
 
 (function () {
@@ -56,16 +106,8 @@ function get_channel_community_posts(channel_id) {
         // get community posts of this channel
         const post_list = get_channel_community_posts(channel_id);
 
-        // check latest post 
-        const latest_post = post_list[1];
-        const latest_post_id = latest_post.backstagePostThreadRenderer.post.backstagePostRenderer.postId;
-        const latest_post_link = `${yt_base_url}/${channel_community_path}?lb=${latest_post_id}`;
-
-        console.log(latest_post);
-        console.log(latest_post_id);
-
-        confirm(latest_post_link);
-
+        // get post info
+        notify(channel_id, post_list[1]);
     }
 
     alert("resp done.");
