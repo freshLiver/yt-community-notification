@@ -11,7 +11,7 @@
 // ==/UserScript==
 
 const msCheckInterval = 1000 * 60;
-const msNotificationDuration = 1000 * 5;
+const msNotificationDuration = Math.min(msCheckInterval, 1000 * 5);
 const maxNotificationRepeats = 3;
 
 const noNotificationAfterClicked = true;
@@ -78,22 +78,27 @@ function notify(channel_id, postData) {
         },
         // report status on notification done
         ondone: () => {
-            console.log(`${postInfo.link} current status : `)
+            console.log(`Notification of ${postInfo.link} sent. Current status : `)
             console.log(status);
         }
 
     };
 
     // check repeats if 'not opened yet' or 'noNotificationAfterClicked not set'
-    if (!noNotificationAfterClicked || !status.checked)
-        // send if repeat times < MaxRepeatTimes
-        if (status.repeats < maxNotificationRepeats) {
-            // increase repeat times before notification
-            ++status.repeats
-            window.localStorage.setItem(postInfo.id, JSON.stringify(status));
-            // send notification
-            GM_notification(notification);
-        }
+    const checked = noNotificationAfterClicked && status.checked;
+    const reachMaxRepeat = status.repeats >= maxNotificationRepeats;
+
+    if (!checked && !reachMaxRepeat) {
+        // increase repeat times before notification
+        ++status.repeats
+        window.localStorage.setItem(postInfo.id, JSON.stringify(status));
+        // send notification
+        GM_notification(notification);
+    } else {
+        // log post status if no notification
+        console.log(`No Notification for ${postInfo.link} sent. Current Status : `)
+        console.log(status);
+    }
 }
 
 function get_channel_community_posts(channel_id) {
@@ -138,10 +143,16 @@ function get_channel_community_posts(channel_id) {
 (function () {
     'use strict';
 
-    // set repeat interval (in ms)
-    window.setInterval(() => {
+    const check_community_posts = () => {
         for (const channel_id of channel_id_list)
             get_channel_community_posts(channel_id);
-    }, msCheckInterval);
+    };
+
+    // check if user want to check posts now
+    if (confirm("Check Community Posts Now ?"))
+        check_community_posts();
+
+    // set repeat interval (in ms)
+    window.setInterval(() => check_community_posts(), msCheckInterval);
 
 })();
