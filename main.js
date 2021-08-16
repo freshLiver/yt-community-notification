@@ -94,6 +94,28 @@ function notify(channel_id, postData) {
         window.localStorage.setItem(postInfo.id, JSON.stringify(status));
         // send notification
         GM_notification(notification);
+
+        // send message to my bot
+        GM_xmlhttpRequest({
+            url: "<MyBotApiGateUrl>",
+            method: "POST",
+            data: JSON.stringify({
+                "taskList": [
+                    {
+                        "taskName": "send_message",
+                        "taskType": "message",
+                        "taskData": [
+                            notification.title, 
+                            "",
+                            notification.text,
+                            "",
+                            `${postInfo.content.videoInfo.link || postInfo.link}`
+                        ]
+                    }
+                ]
+            })
+        });
+
     } else {
         // log post status if no notification
         console.log(`No Notification for ${postInfo.link} sent. Current Status : `)
