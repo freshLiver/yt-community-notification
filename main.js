@@ -1,14 +1,13 @@
 // ==UserScript==
-// @name         Youtube-Community-Post-Notification
-// @namespace    http://tampermonkey.net/
-// @version      0.3
-// @description  Youtube Community Posts
-// @author       freshLiver
-// @match        https://holodex.net/*
-// @grant        GM_notification
-// @grant        GM_xmlhttpRequest
-// @require      https://code.jquery.com/jquery-latest.min.js
-// @connect      www.youtube.com
+// @name        Youtube-Community-Posts-Notification
+// @namespace   Youtube-Scripts
+// @version     1.0
+// @author      freshLiver
+// @description ViolentMonkey Script For Repeatly Checking Youtube Community Posts
+// @match       https://holodex.net/*
+// @grant       GM_notification
+// @grant       GM_xmlhttpRequest
+// @require     https://code.jquery.com/jquery-latest.min.js
 // ==/UserScript==
 
 const msCheckInterval = 1000 * 60;
@@ -24,7 +23,6 @@ const channel_id_list = [
     "UC-hM6YJuNYVAmUWxeIr9FeA",
     "UCXTpFs_3PqI41qX2d9tL2Rw"
 ];
-
 
 function notify(channel_id, postData) {
 
@@ -58,9 +56,9 @@ function notify(channel_id, postData) {
         // parse status 
         status = JSON.parse(window.localStorage.getItem(postInfo.id)) || { repeats: 0, checked: false };
     } catch (error) {
-        // set default value if 
+        // set default value if any error happens
         status = { repeats: 0, checked: false };
-        console.log(`${postInfo.link} status parse error, reset status.`);
+        console.log(`Post ${postInfo.link} Parse Status Error, Status Reset.`);
     }
 
     // convert info to notification data
@@ -71,23 +69,31 @@ function notify(channel_id, postData) {
         highlight: enableNotificationHighlightTab,
         silent: disableNotificationSound,
         timeout: msNotificationDuration,
+
+        // update post's checked status and open video or post page
         onclick: () => {
-            // set post checked and open video or post page
             status.checked = true;
-            console.log(`${postInfo.link} status.checked = true.`);
+            window.localStorage.setItem(postInfo.id, JSON.stringify(status));
             window.open(postInfo.content.videoInfo.link || postInfo.link).focus();
+        },
+        // report status on notification done
+        ondone: () => {
+            console.log(`${postInfo.link} current status : `)
+            console.log(status);
         }
+
     };
 
     // check repeats if 'not opened yet' or 'noNotificationAfterClicked not set'
     if (!noNotificationAfterClicked || !status.checked)
         // send if repeat times < MaxRepeatTimes
-        if (status.repeats < maxNotificationRepeats)
-            GM_notification(notification, () => {
-                // FIXME : increase repeat times and update status
-                console.log(`${postInfo.link} status.repeats = ${++status.repeats}.`);
-                window.localStorage.setItem(postInfo.id, JSON.stringify(status));
-            });
+        if (status.repeats < maxNotificationRepeats) {
+            // increase repeat times before notification
+            ++status.repeats
+            window.localStorage.setItem(postInfo.id, JSON.stringify(status));
+            // send notification
+            GM_notification(notification);
+        }
 }
 
 function get_channel_community_posts(channel_id) {
@@ -96,7 +102,7 @@ function get_channel_community_posts(channel_id) {
     GM_xmlhttpRequest({
         url: `https://www.youtube.com/channel/${channel_id}/community`,
         method: 'GET',
-        responseType: 'text/html',
+        responseType: 'text',
         onload: (arg) => {
             if (arg.status != 200)
                 alert(arg.statusText);
